@@ -24,6 +24,8 @@ public class Settings {
 
         public static final String SESSION_LAST_EVENT = "session.last_event";
 
+        public static final String EVENTS_SEQUENCE = "events.sequence";
+
     }
 
     static class Database {

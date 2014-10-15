@@ -12,6 +12,8 @@ public class Event {
             + Database.Table.Event.PARENT_ID + "=? AND "
             + Database.Table.Event.SESSION_TIMESTAMP + "=? ";
 
+    public static final long NO_PARENT = -1;
+
     private long id;
 
     private String name;
@@ -22,22 +24,18 @@ public class Event {
 
     private int count;
 
-    private boolean synced;
-
-    protected Event(long id, String name, long parentId, long sessionId, int count, boolean synced) {
+    protected Event(long id, String name, long parentId, long sessionId, int count) {
         this.id = id;
         this.name = name;
         this.parentId = parentId;
         this.sessionId = sessionId;
         this.count = count;
-        this.synced = synced;
     }
 
     protected Event(String name, long parentId, long sessionId, SQLiteDatabase db) {
         this.id = -1;
         this.name = name;
         this.parentId = parentId;
-        this.synced = false;
         Cursor c = db.query(
                 Database.Table.Event.TABLE,
                 QUERY_PROJECTION_COUNT,
@@ -56,6 +54,10 @@ public class Event {
         return id >= 0;
     }
 
+    protected long getId() {
+        return this.id;
+    }
+
     protected ContentValues getContentValues() {
         ContentValues values = new ContentValues();
         if (hasId()) {
@@ -65,7 +67,6 @@ public class Event {
         values.put(Database.Table.Event.PARENT_ID, parentId);
         values.put(Database.Table.Event.SESSION_TIMESTAMP, sessionId);
         values.put(Database.Table.Event.COUNT, count);
-        values.put(Database.Table.Event.SYNCED, synced);
         return values;
     }
 

@@ -1,13 +1,18 @@
 package com.jorgemf.android.analytics;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.util.Log;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Analytics {
 
@@ -19,9 +24,11 @@ public class Analytics {
 
     private User user;
 
-    private LinkedList<Integer> idNodesSequence;
+    private long[][] idNodesSequence;
 
     private Database database;
+
+    static private final Lock synchronizedLock = new ReentrantLock();
 
     /**
      * in AndroidManifest.xml inside application tag:
@@ -36,7 +43,12 @@ public class Analytics {
     private long lastSynchronizeTime;
 
     private Analytics() {
-        idNodesSequence = new LinkedList<>();
+        idNodesSequence = new long[Settings.MAXIMUM_EVENTS_SEQUENCE][Settings.MAXIMUM_EVENTS_SEQUENCE];
+        for (int i = 0; i < Settings.MAXIMUM_EVENTS_SEQUENCE; i++) {
+            for (int j = 0; j < Settings.MAXIMUM_EVENTS_SEQUENCE; j++) {
+                idNodesSequence[i][j] = Event.NO_PARENT;
+            }
+        }
     }
 
     public static void onStart(Context context) {
@@ -48,6 +60,8 @@ public class Analytics {
             instance.database = Database.instance(context);
             if (!instance.session.loadSavedSession(context)) {
                 instance.session.start(context);
+            } else {
+                instance.loadSequence(context);
             }
         }
     }
@@ -56,7 +70,7 @@ public class Analytics {
         if (instance.appContext == null) {
             Log.e(Settings.LOG_TAG, "Analytics was not started. It cannot be finished.");
         } else {
-            // TODO save last events chain
+            instance.saveSequence(context);
             instance.session.saveSession(context);
             instance.synchronizeData();
         }
@@ -91,30 +105,71 @@ public class Analytics {
     }
 
     private synchronized void track(String eventName) {
-        int parentId = -1;
-        if (!idNodesSequence.isEmpty()) {
-            parentId = idNodesSequence.getLast();
+        ArrayList<Event> events = new ArrayList<>();
+        long sessionId = session.getTimestamp();
+        SQLiteDatabase dbRead = database.getReadableDatabase();
+        events.add(new Event(eventName, Event.NO_PARENT, sessionId, dbRead));
+        for (int i = 0; i < Settings.MAXIMUM_EVENTS_SEQUENCE - 1; i++) {
+            if (idNodesSequence[i][i] != -1) {
+                events.add(new Event(eventName, idNodesSequence[i][i], sessionId, dbRead));
+            }
         }
-        SQLiteDatabase db = database.getWritableDatabase();
-        db.beginTransaction();
-        for () {
-            // one per list, one list per sequence
-            long id;
-            Event event = new Event(eventName, parentId, session.getTimestamp(), database.getReadableDatabase());
-            if (event.hasId()) {
+        dbRead.close();
+        SQLiteDatabase dbWrite = database.getWritableDatabase();
+        dbWrite.beginTransaction();
+        try {
+            for (int i = events.size() - 1; i >= 0; i--) {
+                Event event = events.get(i);
+                // one per list, one list per sequence
+                long id;
+                if (event.hasId()) {
+                    id = event.getId();
+                    dbWrite.update(Database.Table.Event.TABLE, event.getContentValues(), Database.Table.Event.ID + "=?", new String[]{Long.toString(id)});
+                } else {
+                    id = dbWrite.insert(Database.Table.Event.TABLE, null, event.getContentValues());
+                }
+                if (i > 0) {
+                    System.arraycopy(idNodesSequence[i], 1, idNodesSequence[i], 0, i);
+                }
+                idNodesSequence[i][i] = id;
+            }
+            dbWrite.setTransactionSuccessful();
+        } catch (Exception e) {
+            Log.e(Settings.LOG_TAG, "Failed to store events locally: " + e.getMessage());
+        }
+        dbWrite.endTransaction();
+    }
 
-                db.update(Database.Table.Event.TABLE, null, event.getContentValues());
-            } else {
-                id = db.insert(Database.Table.Event.TABLE, null, event.getContentValues());
+    private void saveSequence(Context context) {
+        StringBuilder sequence = new StringBuilder();
+        for (int i = 0; i < idNodesSequence.length; i++) {
+            for (int j = 0; j <= i; j++) {
+                if (idNodesSequence[i][j] != -1) {
+                    sequence.append(Long.toHexString(idNodesSequence[i][j])).append(',');
+                }
             }
-            db.endTransaction();
-            idNodesSequence.add(id);
-            while (idNodesSequence.size() > Settings.MAXIMUM_EVENTS_SEQUENCE) {
-                // TODO this is not like this
-                idNodesSequence.removeFirst();
+            sequence.append(';');
+        }
+        SharedPreferences sharedPreferences = context.getSharedPreferences(Settings.SHARED_PREFERENCES, Activity.MODE_PRIVATE);
+        sharedPreferences.edit().putString(Settings.Preferences.EVENTS_SEQUENCE, sequence.toString());
+    }
+
+    private void loadSequence(Context context) {
+        SharedPreferences sharedPreferences = context.getSharedPreferences(Settings.SHARED_PREFERENCES, Activity.MODE_PRIVATE);
+        String sequence = sharedPreferences.getString(Settings.Preferences.EVENTS_SEQUENCE, "");
+        int start = 0;
+        int row = 0;
+        int column = 0;
+        for (int i = 0; i < sequence.length(); i++) {
+            char c = sequence.charAt(i);
+            if (c == ',') {
+                idNodesSequence[row][column] = Long.parseLong(sequence.substring(start, i), 16);
+                column++;
+            } else if (c == ';') {
+                row++;
+                column = 0;
             }
         }
-        // TODO
     }
 
     private void synchronizeData() {
@@ -124,11 +179,8 @@ public class Analytics {
     private synchronized void synchronizeData(boolean force) {
         long currentTime = System.currentTimeMillis();
         if (force || lastSynchronizeTime + Settings.SYNCHRONIZE_WINDOW > currentTime) {
-            // TODO
-            // block a lock
-            // launch a thread
-            // update lastSynchronizeTime from thread
-            lastSynchronizeTime = currentTime;
+            Thread thread = new Thread(new SynchronizeThread(this));
+            thread.start();
         }
     }
 
@@ -141,6 +193,49 @@ public class Analytics {
             Log.e(Settings.LOG_TAG, "Failed to load meta-data, NameNotFound: " + e.getMessage());
         } catch (NullPointerException e) {
             Log.e(Settings.LOG_TAG, "Failed to load meta-data, NullPointer: " + e.getMessage());
+        }
+    }
+
+    private class SynchronizeThread implements Runnable {
+
+        private Analytics analytics;
+
+        protected SynchronizeThread(Analytics analytics) {
+            this.analytics = analytics;
+        }
+
+        @Override
+        public void run() {
+            long currentTime = System.currentTimeMillis();
+            synchronizedLock.lock();
+            try {
+                long currentSession = analytics.session.getTimestamp();
+                // create a socket
+                // TODO
+                // send user id and app key
+                String userId = analytics.user.getId();
+                String appKey = analytics.appKey;
+                // TODO
+                // send database as it is (it will be parsed in the server)
+                SQLiteDatabase dbRead = analytics.database.getReadableDatabase();
+                Cursor cursor = dbRead.query(Database.Table.Event.TABLE, null, null, null, null, null, Database.Table.Event.SESSION_TIMESTAMP);
+                // send session time
+                // per event in session time send node id, parent id, event name, count
+                // TODO
+                //
+                cursor.close();
+                // close socket
+                // TODO
+                // clean everything in the database which is older than current session
+                SQLiteDatabase dbWrite = analytics.database.getWritableDatabase();
+                dbWrite.delete(Database.Table.Event.TABLE, Database.Table.Event.SESSION_TIMESTAMP + "<?", new String[]{Long.toString(currentSession)});
+                // update last synchronization
+                analytics.lastSynchronizeTime = currentTime;
+            } catch (Exception e) {
+                Log.e(Settings.LOG_TAG, "Failed to synchronize: " + e.getMessage());
+            } finally {
+                synchronizedLock.unlock();
+            }
         }
     }
 }

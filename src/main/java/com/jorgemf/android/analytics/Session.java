@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 public class Session {
@@ -27,7 +26,7 @@ public class Session {
         if (sharedPreferences.contains(Settings.Preferences.SESSION_TIMESTAMP)) {
             timestamp = sharedPreferences.getLong(Settings.Preferences.SESSION_TIMESTAMP, 0);
             lastEventTime = sharedPreferences.getLong(Settings.Preferences.SESSION_LAST_EVENT, 0);
-            return timestamp != 0 &&lastEventTime != 0;
+            return timestamp != 0 && lastEventTime != 0;
         }
         return false;
     }
@@ -45,8 +44,9 @@ public class Session {
     }
 
     protected void start(Context context) {
-        timestamp = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis());
-        lastEventTime = System.currentTimeMillis();
+        long currentTime = System.currentTimeMillis();
+        timestamp = TimeUnit.MILLISECONDS.toSeconds(currentTime);
+        lastEventTime = currentTime;
     }
 
     protected long getTimestamp() {
