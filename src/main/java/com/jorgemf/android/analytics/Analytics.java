@@ -220,6 +220,7 @@ public class Analytics {
                 SQLiteDatabase dbRead = analytics.database.getReadableDatabase();
                 Cursor cursor = dbRead.query(Database.Table.Event.TABLE, null, null, null, null, null, Database.Table.Event.SESSION_TIMESTAMP);
                 // send session time
+                // TODO maybe send a dictionary of events?
                 // per event in session time send node id, parent id, event name, count
                 // TODO
                 //
