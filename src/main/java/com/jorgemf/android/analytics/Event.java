@@ -7,7 +7,9 @@ import android.database.sqlite.SQLiteDatabase;
 public class Event {
 
     private static final String[] QUERY_PROJECTION_COUNT = {Database.Table.Event.COUNT};
+
     private static final String[] QUERY_PROJECTION_ID = {Database.Table.Event.ID};
+
     private static final String QUERY_SELECTION = Database.Table.Event.NAME + "=? AND "
             + Database.Table.Event.PARENT_ID + "=? AND "
             + Database.Table.Event.SESSION_TIMESTAMP + "=? ";

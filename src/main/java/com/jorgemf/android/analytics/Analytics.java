@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.util.Log;
@@ -210,28 +209,15 @@ public class Analytics {
             synchronizedLock.lock();
             try {
                 long currentSession = analytics.session.getTimestamp();
-                // create a socket
-                // TODO
-                // send user id and app key
-                String userId = analytics.user.getId();
-                String appKey = analytics.appKey;
-                // TODO
-                // send database as it is (it will be parsed in the server)
-                SQLiteDatabase dbRead = analytics.database.getReadableDatabase();
-                Cursor cursor = dbRead.query(Database.Table.Event.TABLE, null, null, null, null, null, Database.Table.Event.SESSION_TIMESTAMP);
-                // send session time
-                // TODO maybe send a dictionary of events?
-                // per event in session time send node id, parent id, event name, count
-                // TODO
-                //
-                cursor.close();
-                // close socket
-                // TODO
-                // clean everything in the database which is older than current session
-                SQLiteDatabase dbWrite = analytics.database.getWritableDatabase();
-                dbWrite.delete(Database.Table.Event.TABLE, Database.Table.Event.SESSION_TIMESTAMP + "<?", new String[]{Long.toString(currentSession)});
-                // update last synchronization
-                analytics.lastSynchronizeTime = currentTime;
+                // create json to send it
+                String json = database.toJson(analytics.user.getId());
+                // make http request
+                if (HttpRequest.postData(analytics.appKey, json)) {
+                    // update last synchronization
+                    analytics.lastSynchronizeTime = currentTime;
+                    // clean everything in the database which is older than current session
+                    database.cleanOldSessions(session.getTimestamp());
+                }
             } catch (Exception e) {
                 Log.e(Settings.LOG_TAG, "Failed to synchronize: " + e.getMessage());
             } finally {
