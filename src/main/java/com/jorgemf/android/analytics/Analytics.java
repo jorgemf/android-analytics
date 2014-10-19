@@ -15,20 +15,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class Analytics {
 
-    private static Analytics instance = new Analytics();
-
-    private Context appContext;
-
-    private Session session;
-
-    private User user;
-
-    private long[][] idNodesSequence;
-
-    private Database database;
-
     static private final Lock synchronizedLock = new ReentrantLock();
-
+    private static Analytics instance = new Analytics();
+    private Context appContext;
+    private Session session;
+    private User user;
+    private long[][] idNodesSequence;
+    private Database database;
     /**
      * in AndroidManifest.xml inside application tag:
      * <meta-data
@@ -55,12 +48,12 @@ public class Analytics {
             instance.appContext = context.getApplicationContext();
             instance.setAppKey();
             instance.session = new Session();
-            instance.user = User.instance(context);
-            instance.database = Database.instance(context);
-            if (!instance.session.loadSavedSession(context)) {
-                instance.session.start(context);
+            instance.user = User.instance(instance.appContext);
+            instance.database = new Database(instance.appContext);
+            if (!instance.session.loadSavedSession(instance.appContext)) {
+                instance.session.start(instance.appContext);
             } else {
-                instance.loadSequence(context);
+                instance.loadSequence(instance.appContext);
             }
         }
     }
@@ -104,7 +97,7 @@ public class Analytics {
     }
 
     private synchronized void track(String eventName) {
-        ArrayList<Event> events = new ArrayList<>();
+        ArrayList<Event> events = new ArrayList<Event>();
         long sessionId = session.getTimestamp();
         SQLiteDatabase dbRead = database.getReadableDatabase();
         events.add(new Event(eventName, Event.NO_PARENT, sessionId, dbRead));
@@ -212,7 +205,7 @@ public class Analytics {
                 // create json to send it
                 String json = database.toJson(analytics.user.getId());
                 // make http request
-                if (HttpRequest.postData(analytics.appKey, json)) {
+                if (json.length() > 0 && HttpRequest.postData(analytics.appKey, json)) {
                     // update last synchronization
                     analytics.lastSynchronizeTime = currentTime;
                     // clean everything in the database which is older than current session

@@ -15,7 +15,7 @@ public class User {
     private User() {
     }
 
-    public static User instance(Context context) {
+    protected static User instance(Context context) {
         if (instance == null) {
             instance = new User();
             if (instance.load(context)) {

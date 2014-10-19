@@ -22,7 +22,7 @@ public class HttpRequest {
         HttpPost httppost = new HttpPost(Settings.HTTP_URL);
 
         try {
-            List<NameValuePair> nameValuePairs = new ArrayList<>(2);
+            List<NameValuePair> nameValuePairs = new ArrayList<NameValuePair>(2);
             nameValuePairs.add(new BasicNameValuePair(Settings.Json.APP_KEY, appKey));
             nameValuePairs.add(new BasicNameValuePair(Settings.Json.DATA, json));
             httppost.setEntity(new UrlEncodedFormEntity(nameValuePairs));
